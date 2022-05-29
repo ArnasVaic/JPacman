@@ -1,156 +1,99 @@
 package com.pacman;
 
-import org.lwjgl.openal.ALUtil;
-
-import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.event.KeyEvent;
-import java.awt.geom.AffineTransform;
-import java.awt.image.BufferedImage;
-import java.awt.image.RasterFormatException;
-import java.io.File;
-import java.io.IOException;
-import java.util.Vector;
 
-public class Player extends Entity {
+public class Player implements Entity {
+    Point position;
+    Point velocity = new Point(1, 0);
+    public AnimationController anim;
+    public boolean canMove = true;
 
-    private double timePerMove = 20;
-    private double moveTimer = 0.0;
-    // velocity of the
-    private int velX = 0;
-    private int velY = 0;
-
-    // Animation variables
-    private double animTimer = 0;
-    private int frameX = 0;
-    private int frameY = 0;
-    private double timePerFrame = 5;
-    private final int frameCountX = 3;
-    private final int frameCountY = 4;
-
-    private final int spriteWidth = 16;
-    private final int spriteHeight = 16;
-
-    private BufferedImage sheet = null;
-
-    /**
-     *
-     * @param x x coordinate in tile space
-     * @param y y coordiante in tile space
-     */
     Player(int x, int y) {
-
-        this.x = x;
-        this.y = y;
-
-        try {
-            sheet = ImageIO.read(new File("assets/playerSheet.png"));
-        } catch(IOException e) {
-            e.printStackTrace();
-        }
-
-        transform = new AffineTransform();
-        transform.setToScale(Game.SCALE, Game.SCALE);
-        transform.translate(x, y);
-
-        if(sheet != null) {
-            sprite = sheet.getSubimage(0, 0, spriteWidth, spriteHeight);
-        }
-    }
-
-    @Override
-    public void draw(Graphics g) {
-        Graphics2D g2D = (Graphics2D) g;
-        //g2D.drawImage(sprite, transform, null);
-        final int sw = spriteWidth * Game.SCALE;
-        final int sh = spriteHeight * Game.SCALE;
-
-        final int w = GameMap.tileWidth * Game.SCALE;
-        final int h = GameMap.tileHeight * Game.SCALE;
-
-        final double offsetX = (w - sw) / 2;
-        final double psx = offsetX + (x - velX) * w;
-        final double csx = offsetX + (x +    0) * w;
-        final double nsx = offsetX + (x + velX) * w;
-
-        boolean Xpos = velX > 0;
-
-        //final int sx = (int) GameUtils.lerp(Xpos?psx:csx, Xpos?csx:nsx, moveTimer / timePerMove);
-        final int sx = (int) csx;
-        final double csy = y * h + (h - sh) / 2;
-        final double nsy = (y + velY) * h + (h - sh) / 2;
-
-        //final int sy = (int) GameUtils.lerp(csy, nsy, moveTimer / timePerMove);
-        final int sy = (int) csy;
-        g.drawImage(sprite, sx, sy, sw, sh, null);
-        g.setColor(new Color(255, 255, 255, 100));
-        g.fillRect(x * w, y * h, w, h);
-    }
-
-    @Override
-    public void update(double delta, GameMap map) {
-        moveTimer += delta;
-        animTimer += delta;
-
-        if(map.isTileSolid(x + velX, y + velY)) {
-            velX = 0;
-            velY = 0;
-        }
-
-        if(moveTimer > timePerMove) {
-            x += velX;
-            y += velY;
-            moveTimer = 0;
-        }
-
-        if(animTimer > timePerFrame) {
-            frameX++;
-            frameX %= frameCountX;
-            animTimer = 0;
-        }
-
-        sprite = sheet.getSubimage(
-            frameX * spriteWidth,
-            frameY * spriteHeight,
-            spriteWidth,
-            spriteHeight
+        position = new Point(x, y);
+        this.anim = new AnimationController(
+            Assets.pacman,
+            new Point(3, 4),
+            new Point(16, 16),
+            5
         );
     }
 
     @Override
-    public void handle(KeyEvent e, GameMap map) {
+    public void draw(Graphics g) {
+        final Point spriteSize = PointUtils.scale(anim.spriteSize, Game.SCALE);
+        final Point tileSize = GameMap.SCALED_TILE_SIZE;
+        final Point offset = PointUtils.scale(PointUtils.sub(tileSize, spriteSize), 0.5);
+        final Point drawPosition = PointUtils.add(PointUtils.mul(position, tileSize), offset);
+        DrawUtils.drawImage(g, anim.sprite, drawPosition, spriteSize);
+    }
 
-        // Player position in tile space
-        int tx = (int) x / (GameMap.tileWidth * Game.SCALE);
-        int ty = (int) y / (GameMap.tileHeight * Game.SCALE);
+    @Override
+    public void update(double delta, Game game) {
+        if(game.moveTimer >= Game.TIME_PER_MOVE) {
+            if(canMove) {
+                final Point newPosition = new Point(position);
+                newPosition.translate(velocity.x, velocity.y);
+                final boolean solid = game.map.isTileSolid(newPosition);
+                final Point right = new Point(1, 0);
+                final Point left = new Point(-1, 0);
+                final Point leftTunnel = new Point(0, 17);
+                final Point rightTunnel = new Point(27, 17);
+                final boolean goingRight = velocity.equals(right) && position.equals(rightTunnel);
+                final boolean goingLeft = velocity.equals(left) && position.equals(leftTunnel);
+                // apply velocity only if way is clear or
+                if(!solid || goingRight || goingLeft) {
+                    position.translate(velocity.x, velocity.y);
+                }
+            }
+            // Tunneling logic
+            if(position.x == GameMap.TILE_COUNT.x) position.x = 0;
+            if(position.y == GameMap.TILE_COUNT.y) position.y = 0;
+            if(position.x == -1) position.x = GameMap.TILE_COUNT.x - 1;
+            if(position.y == -1) position.y = GameMap.TILE_COUNT.y - 1;
 
+
+            if(game.map.isFood(position, GameMap.SMALL_FOOD)) {
+                game.map.removeFood(position);
+                game.score += Game.smallFoodScore;
+            }
+            if(game.map.isFood(position, GameMap.BIG_FOOD)) {
+                game.map.removeFood(position);
+                game.score += Game.bigFoodScore;
+                // ghost go nuts
+                for(Ghost g: game.ghosts) {
+                    g.setPhase(Ghost.FRIGHTENED_PHASE);
+                }
+            }
+        }
+        anim.update(delta);
+    }
+
+    @Override
+    public void handle(KeyEvent e, Game game) {
         switch (e.getKeyCode()) {
             case KeyEvent.VK_RIGHT -> {
-                if(!map.isTileSolid(x + 1, y )) {
-                    velX = 1;
-                    velY = 0;
-                    frameY = 0;
+                if(!game.map.isTileSolid(position.x + 1, position.y)) {
+                    velocity = new Point(1, 0);
+                    anim.setAnimationIndex(0);
                 }
             }
             case KeyEvent.VK_LEFT -> {
-                if(!map.isTileSolid(x - 1, y )) {
-                    velX = -1;
-                    velY = 0;
-                    frameY = 1;
+                if(!game.map.isTileSolid(position.x - 1, position.y)) {
+                    velocity = new Point(-1, 0);
+                    anim.setAnimationIndex(1);
                 }
             }
             case KeyEvent.VK_DOWN -> {
-                if(!map.isTileSolid(x, y + 1)) {
-                    velX = 0;
-                    velY = 1;
-                    frameY = 2;
+                if(!game.map.isTileSolid(position.x, position.y + 1)) {
+                    velocity = new Point(0, 1);
+                    anim.setAnimationIndex(2);
                 }
             }
             case KeyEvent.VK_UP -> {
-                if(!map.isTileSolid(x, y - 1)) {
-                    velX = 0;
-                    velY = -1;
-                    frameY = 3;
+                if(!game.map.isTileSolid(position.x, position.y - 1)) {
+                    velocity = new Point(0, -1);
+                    anim.setAnimationIndex(3);
                 }
             }
         }
