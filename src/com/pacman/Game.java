@@ -17,10 +17,9 @@ public class Game extends Canvas {
     );
     private static final Point HSCORE_TEXT_POS = new Point(
         GameMap.SCALED_TILE_SIZE.x * 9,
-        GameMap.SCALED_TILE_SIZE.x
+        GameMap.SCALED_TILE_SIZE.y
     );
 
-    private final boolean running;
     private boolean drawDebug = true;
 
     public Player player;
@@ -29,7 +28,7 @@ public class Game extends Canvas {
     public GameMap map;
 
     public int score = 0;
-    public int highScore = 0;
+    // int highScore = 0;
 
     private boolean idle = true;
     private boolean gameOver = false;
@@ -54,7 +53,6 @@ public class Game extends Canvas {
         this.setFont(Assets.font);
 
         idleTimer = 0.0;
-        running = true;
 
         player = new Player(14, 26);
         ghosts = new ArrayList<>();
@@ -75,7 +73,7 @@ public class Game extends Canvas {
         double delta = 0;
         long timer = System.currentTimeMillis();
         int frames = 0;
-        while(running) {
+        while(true) {
             long now = System.nanoTime();
             delta += (now - lastTime) / ns;
             lastTime = now;
@@ -112,6 +110,7 @@ public class Game extends Canvas {
         moveTimer += delta;
 
         player.update(delta, this);
+
         for (Ghost g : ghosts) {
             g.update(delta, this);
         }
@@ -122,17 +121,14 @@ public class Game extends Canvas {
 
         // check if player collides with ghost?
         for(Ghost g: ghosts) {
-            switch(g.phase) {
-                case Ghost.FRIGHTENED_PHASE -> {
-                    // TODO: create state where ghost tries to run to center
-                }
-                default -> {
-                    if (player.position.equals(g.position)) {
-                        gameOver = true;
-                        player.canMove = false;
-                        Ghost.canMove = false;
-                        break;
-                    }
+            //if (g.phase == Ghost.FRIGHTENED_PHASE) {
+                // TODO: create state where ghost tries to run to center
+            //}
+            if (g.phase != Ghost.FRIGHTENED_PHASE) {
+                if (player.position.equals(g.position)) {
+                    gameOver = true;
+                    player.canMove = false;
+                    Ghost.canMove = false;
                 }
             }
         }
